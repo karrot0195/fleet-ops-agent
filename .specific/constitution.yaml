@@ -1,0 +1,41 @@
+project_name: upgrade-VM
+version: 1.0.0
+ratified: '2026-11-20'
+last_amended: '2026-11-20'
+body: ''
+principles:
+  - name: Safety First (NON-NEGOTIABLE)
+    description: Every VM change MUST be preceded by a local backup of the current
+      configuration, and a working rollback path MUST exist before execution
+      starts. No change proceeds without both.
+  - name: Explicit Confirmation Gates
+    description: Execution MUST NOT begin until the user has confirmed the summarized
+      per-VM plan. Each VM (or batch) is gated behind an explicit user approval
+      that states what is inside the VM and what will change.
+  - name: Per-VM Traceability
+    description: Every audited or modified VM MUST have a written plan under
+      plan/{ip}.md recording findings, intended changes, and outcomes.
+  - name: Change Only What Is Needed
+    description: Config updates MUST be justified by the audit — if the existing
+      config does not need updating, it MUST be left untouched. Minimal diffs only.
+  - name: Scripted and Idempotent
+    description: All steps (IP scan via doctl, audit, upgrade) MUST be reproducible
+      from scripts or documented commands and safe to re-run against the same VM.
+sections:
+  - name: Operational Constraints
+    content: The fleet consists of DigitalOcean VMs managed through the doctl CLI;
+      the VM inventory lives in ip.txt. VMs MAY be processed in parallel, but each
+      parallel batch remains subject to the confirmation gate principle. Credentials
+      and IP data MUST NOT be committed to version control.
+  - name: Development Workflow
+    content: Work follows the Spec Kit flow (specify, plan, tasks, implement) using
+      the speckit skills linked under .agents/skills/. Every completed change is
+      appended to LOGS.md via speckit-log; LOGS.md is append-only and never
+      rewritten.
+governance:
+  - This constitution supersedes all other project practices; conflicts are
+    resolved in its favor.
+  - Amendments MUST be documented with a semantic version bump and a dated entry
+    in last_amended.
+  - Compliance with the safety and confirmation principles MUST be verified in
+    every review before execution against a VM.
