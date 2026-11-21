@@ -6,13 +6,20 @@ summary: Automation project for auditing and upgrading nginx on a fleet of Digit
   checked for nginx presence, version, and configuration drift, producing a per-VM
   plan under plan/{ip}.md. Plans are summarized for user confirmation, then executed
   with local config backups for rollback, processing VMs in parallel behind confirmation
-  gates. Only PLAN.md and ip.txt exist so far; no implementation code yet. The agent-skills
-  submodule provides the agent workflow tooling.
+  gates. The agent-skills submodule provides the agent workflow tooling.
 architecture:
   framework: ''
-  language: ''
+  language: Python 3.11+
   database: ''
-  unit_test_framework: ''
-skills: []
+  unit_test_framework: unittest
+skills:
+  - name: verify-audit
+    description: "python3 -m unittest discover -s .agents/skills/nginx-fleet-upgrade/scripts/tests -t .agents/skills/nginx-fleet-upgrade/scripts -k verdict -k survey -k inventory -k audit_flow"
+  - name: verify-rollout
+    description: "python3 -m unittest discover -s .agents/skills/nginx-fleet-upgrade/scripts/tests -t .agents/skills/nginx-fleet-upgrade/scripts -k execute -k rollout"
+  - name: verify-rollback
+    description: "python3 -m unittest discover -s .agents/skills/nginx-fleet-upgrade/scripts/tests -t .agents/skills/nginx-fleet-upgrade/scripts -k rollback"
+  - name: verify-report
+    description: "python3 -m unittest discover -s .agents/skills/nginx-fleet-upgrade/scripts/tests -t .agents/skills/nginx-fleet-upgrade/scripts -k report"
 rules: []
 features_file: .specific/project-features.yaml

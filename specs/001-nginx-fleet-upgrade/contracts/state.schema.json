@@ -1,0 +1,237 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://upgrade-vm.local/schemas/nginx-fleet-upgrade/state.schema.json",
+  "title": "nginx Fleet Upgrade run state",
+  "description": "Schema for .fleet/state.json. Local-only; contains IP addresses and must never be committed.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "run_id", "created_at", "updated_at", "inventory", "records", "approvals", "gates", "report"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "run_id": { "type": "string", "pattern": "^[0-9]{8}T[0-9]{6}Z-[a-z0-9]{6}$" },
+    "created_at": { "$ref": "#/$defs/timestamp" },
+    "updated_at": { "$ref": "#/$defs/timestamp" },
+    "inventory": { "$ref": "#/$defs/inventory" },
+    "records": {
+      "type": "object",
+      "description": "Keyed by IPv4 address; one record per inventory entry.",
+      "propertyNames": { "$ref": "#/$defs/ipv4" },
+      "additionalProperties": { "$ref": "#/$defs/vmRecord" }
+    },
+    "approvals": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/approval" }
+    },
+    "gates": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/canaryGate" }
+    },
+    "report": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["written_at", "logged_at"],
+      "properties": {
+        "written_at": { "$ref": "#/$defs/timestampOrNull" },
+        "logged_at": { "$ref": "#/$defs/timestampOrNull" }
+      }
+    }
+  },
+  "$defs": {
+    "timestamp": { "type": "string", "format": "date-time" },
+    "timestampOrNull": { "type": ["string", "null"], "format": "date-time" },
+    "ipv4": {
+      "type": "string",
+      "pattern": "^(?:(?:25[0-5]|2[0-4][0-9]|1?[0-9]{1,2})\\.){3}(?:25[0-5]|2[0-4][0-9]|1?[0-9]{1,2})$"
+    },
+    "inventory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["captured_at", "source", "entries", "added", "removed"],
+      "properties": {
+        "captured_at": { "$ref": "#/$defs/timestamp" },
+        "source": { "enum": ["doctl", "file"] },
+        "entries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "ip", "status", "first_seen", "last_seen"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1, "pattern": "^[^,\\n]+$" },
+              "ip": { "$ref": "#/$defs/ipv4" },
+              "status": { "type": "string", "minLength": 1 },
+              "first_seen": { "$ref": "#/$defs/timestamp" },
+              "last_seen": { "$ref": "#/$defs/timestamp" }
+            }
+          }
+        },
+        "added": { "type": "array", "items": { "$ref": "#/$defs/ipv4" } },
+        "removed": { "type": "array", "items": { "$ref": "#/$defs/ipv4" } }
+      }
+    },
+    "verdict": {
+      "enum": ["SKIP", "UP-TO-DATE", "UPGRADE", "BLOCKED", "UNREACHABLE"]
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["os", "binary_present", "installed_version", "candidate_version", "package_origin", "held_packages", "modules", "service_active", "service_enabled", "tls_present", "server_blocks", "config_test_ok", "privilege"],
+      "properties": {
+        "os": { "type": "string" },
+        "binary_present": { "type": "boolean" },
+        "installed_version": { "type": ["string", "null"] },
+        "candidate_version": { "type": ["string", "null"] },
+        "package_origin": { "type": ["string", "null"] },
+        "held_packages": { "type": "array", "items": { "type": "string" } },
+        "modules": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["static", "dynamic"],
+          "properties": {
+            "static": { "type": "array", "items": { "type": "string" } },
+            "dynamic": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "third_party_modules": { "type": "array", "items": { "type": "string" } },
+        "service_active": { "type": ["boolean", "null"] },
+        "service_enabled": { "type": ["boolean", "null"] },
+        "tls_present": { "type": "boolean" },
+        "server_blocks": { "type": "integer", "minimum": 0 },
+        "config_test_ok": { "type": "boolean" },
+        "privilege": { "type": "string" }
+      }
+    },
+    "backup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["remote_path", "local_path", "size_bytes", "sha256", "verified", "created_at"],
+      "properties": {
+        "remote_path": { "type": "string", "minLength": 1 },
+        "local_path": { "type": "string", "minLength": 1 },
+        "size_bytes": { "type": "integer", "minimum": 1 },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "verified": { "const": true },
+        "created_at": { "$ref": "#/$defs/timestamp" }
+      }
+    },
+    "step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "ok", "started_at", "finished_at", "detail"],
+      "properties": {
+        "name": { "enum": ["backup", "precheck", "upgrade", "verify", "drift"] },
+        "ok": { "type": "boolean" },
+        "started_at": { "$ref": "#/$defs/timestamp" },
+        "finished_at": { "$ref": "#/$defs/timestamp" },
+        "detail": { "type": "string" }
+      }
+    },
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["config_ok", "service_active", "version_matches", "http_status", "https_status"],
+      "properties": {
+        "config_ok": { "type": "boolean" },
+        "service_active": { "type": "boolean" },
+        "version_matches": { "type": "boolean" },
+        "http_status": { "type": ["integer", "null"], "minimum": 100, "maximum": 599 },
+        "https_status": { "type": ["integer", "null"], "minimum": 100, "maximum": 599 }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["phase", "state", "steps", "old_version", "new_version", "verification", "attempts", "error"],
+      "properties": {
+        "phase": { "enum": ["canary", "fleet"] },
+        "state": { "enum": ["PENDING", "RUNNING", "SUCCEEDED", "FAILED", "ROLLED_BACK"] },
+        "steps": { "type": "array", "items": { "$ref": "#/$defs/step" } },
+        "old_version": { "type": ["string", "null"] },
+        "new_version": { "type": ["string", "null"] },
+        "verification": { "oneOf": [{ "$ref": "#/$defs/verification" }, { "type": "null" }] },
+        "attempts": { "type": "integer", "minimum": 1, "maximum": 2 },
+        "error": { "type": ["string", "null"] }
+      }
+    },
+    "rollback": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "pre_rollback_archive", "config_ok", "service_active", "at"],
+      "properties": {
+        "state": { "enum": ["SUCCEEDED", "FAILED"] },
+        "pre_rollback_archive": { "type": "string" },
+        "config_ok": { "type": "boolean" },
+        "service_active": { "type": "boolean" },
+        "at": { "$ref": "#/$defs/timestamp" },
+        "error": { "type": ["string", "null"] }
+      }
+    },
+    "drift": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pattern", "path", "needs_manual_review"],
+      "properties": {
+        "pattern": { "type": "string", "minLength": 1 },
+        "path": { "type": "string", "minLength": 1 },
+        "needs_manual_review": { "const": true }
+      }
+    },
+    "vmRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "ip", "verdict", "reason", "evidence", "execution", "backup", "drift_flags", "rollback", "timestamps"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "ip": { "$ref": "#/$defs/ipv4" },
+        "verdict": { "$ref": "#/$defs/verdict" },
+        "reason": { "type": ["string", "null"] },
+        "evidence": { "oneOf": [{ "$ref": "#/$defs/evidence" }, { "type": "null" }] },
+        "execution": { "oneOf": [{ "$ref": "#/$defs/execution" }, { "type": "null" }] },
+        "backup": { "oneOf": [{ "$ref": "#/$defs/backup" }, { "type": "null" }] },
+        "drift_flags": { "type": "array", "items": { "$ref": "#/$defs/drift" } },
+        "rollback": { "oneOf": [{ "$ref": "#/$defs/rollback" }, { "type": "null" }] },
+        "timestamps": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["surveyed_at", "executed_at", "rolled_back_at"],
+          "properties": {
+            "surveyed_at": { "$ref": "#/$defs/timestampOrNull" },
+            "executed_at": { "$ref": "#/$defs/timestampOrNull" },
+            "rolled_back_at": { "$ref": "#/$defs/timestampOrNull" }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "verdict": { "enum": ["BLOCKED", "UNREACHABLE"] } } },
+          "then": { "required": ["reason"], "properties": { "reason": { "type": "string", "minLength": 1 } } }
+        },
+        {
+          "if": { "properties": { "verdict": { "const": "UNREACHABLE" } } },
+          "then": { "properties": { "evidence": { "type": "null" } } }
+        }
+      ]
+    },
+    "approval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["approved_ips", "excluded_ips", "approved_at", "note"],
+      "properties": {
+        "approved_ips": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/ipv4" } },
+        "excluded_ips": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/ipv4" } },
+        "approved_at": { "$ref": "#/$defs/timestamp" },
+        "note": { "type": ["string", "null"] }
+      }
+    },
+    "canaryGate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["decision", "decided_at", "note"],
+      "properties": {
+        "decision": { "enum": ["proceed", "stop"] },
+        "decided_at": { "$ref": "#/$defs/timestamp" },
+        "note": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

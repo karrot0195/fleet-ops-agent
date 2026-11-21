@@ -1,0 +1,211 @@
+#!/usr/bin/env python3
+import json
+import os
+import sys
+from pathlib import Path
+
+args = sys.argv[1:]
+scenario_path = os.environ.get("FLEET_FAKE_SCENARIO")
+scenario = json.loads(Path(scenario_path).read_text()) if scenario_path and Path(scenario_path).is_file() else {}
+target = next((item for item in args if "@" in item and "%" not in item), "")
+ip = target.split("@", 1)[1] if "@" in target else ""
+command = args[-1] if args else ""
+vm = (scenario.get("vms") or {}).get(ip, {})
+log_path = os.environ.get("FLEET_FAKE_LOG")
+applied_path = os.environ.get("FLEET_FAKE_APPLIED")
+
+if log_path:
+    with Path(log_path).open("a", encoding="utf-8") as handle:
+        handle.write(f"{ip}\t{command}\n")
+
+
+def applied():
+    if not applied_path or not Path(applied_path).is_file():
+        return False
+    return ip in Path(applied_path).read_text(encoding="utf-8").split()
+
+
+def counters_dir():
+    counters = os.environ.get("FLEET_FAKE_COUNTERS")
+    return Path(counters) if counters else None
+
+
+def repo_active():
+    directory = counters_dir()
+    marker = directory / f"{ip}.repo" if directory else None
+    return bool(marker and marker.is_file())
+
+
+def installed():
+    if applied():
+        return candidate() or vm.get("installed_version", "")
+    return vm.get("installed_version", "")
+
+
+def candidate():
+    if repo_active() and vm.get("repo_candidate_version"):
+        return vm["repo_candidate_version"]
+    return vm.get("candidate_version")
+
+
+def policy():
+    candidate_version = candidate() or "(none)"
+    origin = vm.get("origin", "http://archive.ubuntu.com/ubuntu jammy/main amd64 Packages")
+    lines = ["nginx:", f"  Installed: {installed() or '(none)'}", f"  Candidate: {candidate_version}", "  Version table:"]
+    if repo_active():
+        repo_version = vm.get("repo_candidate_version") or ""
+        if repo_version and repo_version != installed():
+            lines.append(f"     {repo_version} 900")
+            lines.append("        900 https://nginx.org/packages/ubuntu noble/nginx amd64 Packages")
+    elif installed() and candidate_version != "(none)" and candidate_version != installed():
+        lines.append(f"     {candidate_version} 500")
+        if origin:
+            lines.append(f"        500 {origin}")
+    if installed():
+        lines.append(f" *** {installed()} 500")
+        if repo_active():
+            lines.append("        900 https://nginx.org/packages/ubuntu noble/nginx amd64 Packages")
+        elif origin:
+            lines.append(f"        500 {origin}")
+        lines.append("        100 /var/lib/dpkg/status")
+    return "\n".join(lines)
+
+
+def sections():
+    modules = " ".join(f"--with-{name}_module" for name in vm.get("static_modules", []))
+    configure = f"configure arguments: --prefix=/usr {modules}".strip()
+    dynamic = "\n".join(f"load_module {path};" for path in vm.get("dynamic_modules", []))
+    return {
+        "UID": "0",
+        "OS": '"Ubuntu 22.04.4 LTS"',
+        "CODENAME": vm.get("codename", "jammy"),
+        "BINARY": "/usr/sbin/nginx" if vm.get("binary", True) else "",
+        "INSTALLED": installed(),
+        "POLICY": policy(),
+        "HOLDS": "\n".join(vm.get("holds", [])),
+        "NGINXV": f"nginx version: nginx/1.18.0\n{configure}",
+        "LOADMODULES": dynamic,
+        "SERVICE_ACTIVE": "active" if vm.get("service_active", True) else "inactive",
+        "SERVICE_ENABLED": "enabled" if vm.get("service_enabled", True) else "disabled",
+        "TLS": "/etc/nginx/sites-enabled/site" if vm.get("tls", False) else "",
+        "BLOCKS": str(vm.get("server_blocks", 1)),
+        "CONFIGTEST": "syntax is ok" if vm.get("config_ok", True) else "emerg",
+    }
+
+
+if "###UID" in command:
+    if not vm.get("reachable", True):
+        print(vm.get("error", "connection refused"), file=sys.stderr)
+        sys.exit(255)
+    data = sections()
+    for key, value in data.items():
+        print(f"###{key}")
+        if value:
+            print(value)
+    print(f"###CONFIGTEST_RC:{'0' if vm.get('config_ok', True) else '1'}")
+    print("###END")
+    sys.exit(0)
+
+if "###PRECHECK" in command:
+    if not vm.get("reachable", True):
+        print(vm.get("error", "connection refused"), file=sys.stderr)
+        sys.exit(255)
+    config_ok = vm.get("config_ok", True)
+    print("###PRECHECK")
+    print("syntax is ok" if config_ok else "emerg")
+    print("###PRECHECK_RC")
+    print("0" if config_ok else "1")
+    print("###ACTIVE")
+    print("active" if vm.get("service_active", True) else "inactive")
+    print("###VERSION")
+    if installed():
+        print(installed())
+    print("###HTTP")
+    print(vm.get("http_status", 200))
+    print("###HTTPS")
+    print(vm.get("https_status", 200))
+    print("###DRIFT")
+    for path in vm.get("drift", []):
+        print(path)
+    print("###END")
+    sys.exit(0)
+
+if "nginx-archive-keyring.gpg" in command:
+    if not vm.get("bootstrap_ok", True):
+        print(vm.get("bootstrap_error", "gpg: key export failed"), file=sys.stderr)
+        sys.exit(50)
+    counters = counters_dir()
+    if counters:
+        counters.mkdir(parents=True, exist_ok=True)
+        (counters / f"{ip}.repo").write_text("1\n")
+    sys.exit(0)
+
+if "apt-cache policy" in command:
+    print(policy())
+    sys.exit(0)
+
+if "apt-get install" in command:
+    counters = os.environ.get("FLEET_FAKE_COUNTERS")
+    fail_count = int(vm.get("upgrade_fail_count", 0))
+    if counters and fail_count:
+        directory = Path(counters)
+        directory.mkdir(parents=True, exist_ok=True)
+        counter = directory / f"{ip}.count"
+        used = int(counter.read_text(encoding="utf-8")) if counter.is_file() else 0
+        if used < fail_count:
+            counter.write_text(str(used + 1), encoding="utf-8")
+            print(vm.get("upgrade_error", "E: unable to upgrade"), file=sys.stderr)
+            sys.exit(100)
+    if not vm.get("upgrade_ok", True):
+        print(vm.get("upgrade_error", "E: unable to upgrade"), file=sys.stderr)
+        sys.exit(100)
+    if applied_path:
+        with Path(applied_path).open("a", encoding="utf-8") as handle:
+            handle.write(ip + "\n")
+    sys.exit(0)
+
+if "tar czf" in command:
+    if not vm.get("backup_ok", True):
+        print("tar failed", file=sys.stderr)
+        sys.exit(1)
+    sys.exit(0)
+
+if "tar xzf" in command:
+    sys.exit(0 if vm.get("restore_ok", True) else 1)
+
+if "sha256sum" in command:
+    import hashlib
+
+    payload = b"" if scenario.get("backup_empty") else b"fake-nginx-tarball"
+    digest = hashlib.sha256(payload).hexdigest()
+    if vm.get("backup_corrupt"):
+        digest = "0" * 64
+    print(f"{digest}  {command.split()[-1]}")
+    sys.exit(0)
+
+if "systemctl restart" in command:
+    sys.exit(0)
+
+if "systemctl is-active" in command:
+    print("active" if vm.get("service_active", True) else "inactive")
+    sys.exit(0)
+
+if "nginx -t" in command:
+    print("syntax is ok" if vm.get("config_ok", True) else "emerg")
+    sys.exit(0 if vm.get("config_ok", True) else 1)
+
+if "dpkg-query" in command:
+    print(installed())
+    sys.exit(0)
+
+if "curl" in command:
+    status = vm.get("https_status", 200) if "https://" in command else vm.get("http_status", 200)
+    print(status)
+    sys.exit(0)
+
+if "find " in command:
+    for path in vm.get("drift", []):
+        print(path)
+    sys.exit(0)
+
+sys.exit(0)

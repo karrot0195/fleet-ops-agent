@@ -1,14 +1,14 @@
 ### PROJECT SUMMARY 
 
-Automation project for auditing and upgrading nginx on a fleet of DigitalOcean VMs. VM IPs are collected via doctl into ip.txt (already populated); each VM is checked for nginx presence, version, and configuration drift, producing a per-VM plan under plan/{ip}.md. Plans are summarized for user confirmation, then executed with local config backups for rollback, processing VMs in parallel behind confirmation gates. Only PLAN.md and ip.txt exist so far; no implementation code yet. The agent-skills submodule provides the agent workflow tooling.
+Automation project for auditing and upgrading nginx on a fleet of DigitalOcean VMs. VM IPs are collected via doctl into ip.txt (already populated); each VM is checked for nginx presence, version, and configuration drift, producing a per-VM plan under plan/{ip}.md. Plans are summarized for user confirmation, then executed with local config backups for rollback, processing VMs in parallel behind confirmation gates. Implemented as the nginx-fleet-upgrade Agent Skill with a stdlib Python CLI under .agents/skills/nginx-fleet-upgrade/. The agent-skills submodule provides the agent workflow tooling.
 
 
 ### ARCH DEFINE
 
-Framework: TBD
-Language: TBD
-Database: TBD
-Unit Test Framework: TBD
+Framework: Agent Skill + Python CLI (no web framework)
+Language: Python 3.11+
+Database: None (JSON state + Markdown records)
+Unit Test Framework: unittest
 
 
 ### RULES

@@ -1,0 +1,3 @@
+# speckit-clarify experience
+
+- **2026-11-20 (001-nginx-fleet-upgrade)**: Ran clarification on a pre-plan ops/runbook spec. High-impact gaps were verdict coverage and gate semantics (unreachable VMs not in verdict enum; “no candidate version” outcome; canary size; BLOCKED override contradiction; canary proceed/stop decision). Resolved 5/5 via sequential MC questions, integrating after each answer into `spec.md` (Clarifications session + US1/US2, edge cases, FR-003/005/006/007/010/012, entities, SC-001). Kept requirements testable and aligned with constitution (safety gates, no auto-fix/override of BLOCKED). Checklist remained 16/16. Pre/post hooks in `.specific/extensions.yml` were empty. Next: `/speckit-plan`.

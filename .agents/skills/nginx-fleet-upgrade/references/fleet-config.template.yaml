@@ -1,0 +1,78 @@
+apiVersion: nginx-fleet-upgrade/v1
+fleet:
+  inventory_file: ip.txt
+  source: doctl
+paths:
+  records_dir: plan
+  backups_dir: backups
+  state_dir: .fleet
+  log_file: LOGS.md
+ssh:
+  env_file: .personal/ssh.env
+  connect_timeout: 5
+  command_timeout: 60
+  strict_host_key_checking: accept-new
+  privilege: auto
+  multiplex: true
+execution:
+  concurrency: 4
+  canary_size: 1
+  retry_rounds: 1
+  upgrade_command: >-
+    DEBIAN_FRONTEND=noninteractive apt-get install --only-upgrade {package}
+    -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"
+tool:
+  name: nginx
+  package: nginx
+  service: nginx
+  config_paths:
+    - /etc/nginx
+  version_query: "dpkg-query -W -f='${Version}' nginx"
+  precheck: nginx -t
+  allowed_origin_patterns:
+    - archive.ubuntu.com
+    - security.ubuntu.com
+    - ports.ubuntu.com
+    - deb.debian.org
+    - security.debian.org
+    - nginx.org
+  hold_patterns:
+    - nginx
+    - nginx-*
+  allowed_dynamic_module_dirs:
+    - /usr/lib/nginx/modules
+  verify:
+    http:
+      enabled: true
+      url: http://127.0.0.1/
+      timeout: 10
+    https:
+      enabled: auto
+      url: https://127.0.0.1/
+      timeout: 10
+    require_status: []
+  drift_patterns:
+    - "*.dpkg-dist"
+    - "*.dpkg-new"
+    - "*.ucf-dist"
+logging:
+  redact: []
+migration:
+  enabled: false
+  repo_url: https://nginx.org/packages/ubuntu
+  repo_dist: noble
+  apply_to_dists: []
+  key_url: https://nginx.org/keys/nginx_signing.key
+  key_fingerprint: 573BFD6B3D8FBC641079A6ABABF5BD827BD9BF62
+  keyring_path: /usr/share/keyrings/nginx-archive-keyring.gpg
+  sources_path: /etc/apt/sources.list.d/nginx.list
+  pin_path: /etc/apt/preferences.d/99nginx
+  pin_priority: 900
+  stub_default_conf: true
+  prereq_packages:
+    - curl
+    - gnupg
+    - ca-certificates
+  upgrade_command: >-
+    DEBIAN_FRONTEND=noninteractive apt-get install -y {package}
+    -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"

@@ -1,9 +1,9 @@
 name: features
-summary: Planned automation pipeline for auditing and upgrading nginx across DigitalOcean VMs (from PLAN.md); no code implemented yet.
+summary: Gated nginx fleet pipeline delivered as the nginx-fleet-upgrade Agent Skill and Python CLI; audit, canary rollout, configuration rollback, and reporting are implemented with fixture-based verification.
 features:
   - name: ip-scan
     description: Scan all IPs from DigitalOcean via doctl and write them to ip.txt
-    summary: ""
+    summary: "fleet.py discover refreshes Name,IP from doctl, reconciles against the previous snapshot, and surfaces added/removed VMs."
     sources:
       - type: file
         path: PLAN.md
@@ -11,19 +11,19 @@ features:
         path: ip.txt
   - name: vm-audit
     description: Check each IP for nginx presence, version, and config drift; write plan/{ip}.md
-    summary: ""
+    summary: "fleet.py survey collects read-only evidence and assigns one of SKIP/UP-TO-DATE/UPGRADE/BLOCKED/UNREACHABLE with a per-VM record."
     sources:
       - type: file
         path: PLAN.md
   - name: plan-review
     description: Summarize the per-VM audit plans to the user for confirmation
-    summary: ""
+    summary: "fleet.py summary groups verdicts and exposes only UPGRADE VMs as eligible; execute refuses unapproved or ineligible IPs."
     sources:
       - type: file
         path: PLAN.md
   - name: upgrade-execute
     description: Execute confirmed plans with config backups for rollback; process VMs in parallel behind a user-confirmation gate
-    summary: ""
+    summary: "Canary then gated fleet rollout with verified backups, bounded concurrency, one retry, drift flags, configuration-only rollback, and an append-only report."
     sources:
       - type: file
         path: PLAN.md

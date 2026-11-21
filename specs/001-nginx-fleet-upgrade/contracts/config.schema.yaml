@@ -1,0 +1,202 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: https://upgrade-vm.local/schemas/nginx-fleet-upgrade/config.schema.yaml
+title: nginx Fleet Upgrade configuration
+description: >-
+  Schema for .specific/nginx-fleet.yaml. Non-secret settings only; credentials live
+  in .personal/ssh.env and are referenced by path. Defaults are applied by the loader
+  when a key is omitted.
+type: object
+additionalProperties: false
+required: [apiVersion, fleet, paths, ssh, execution, tool]
+
+properties:
+  apiVersion:
+    const: nginx-fleet-upgrade/v1
+
+  fleet:
+    type: object
+    additionalProperties: false
+    required: [inventory_file, source]
+    properties:
+      inventory_file:
+        type: string
+        minLength: 1
+        default: ip.txt
+        description: Project-root-relative roster, written as Name,IP lines.
+      source:
+        enum: [doctl, file]
+        default: doctl
+
+  paths:
+    type: object
+    additionalProperties: false
+    required: [records_dir, backups_dir, state_dir, log_file]
+    properties:
+      records_dir:
+        type: string
+        minLength: 1
+        default: plan
+      backups_dir:
+        type: string
+        minLength: 1
+        default: backups
+      state_dir:
+        type: string
+        minLength: 1
+        default: .fleet
+        description: Must be gitignored; holds state.json and per-run logs.
+      log_file:
+        type: string
+        minLength: 1
+        default: LOGS.md
+
+  ssh:
+    type: object
+    additionalProperties: false
+    required: [env_file, connect_timeout, command_timeout, strict_host_key_checking, privilege]
+    properties:
+      env_file:
+        type: string
+        minLength: 1
+        default: .personal/ssh.env
+        description: Defines SSH_USER, SSH_KEY and SSH_PORT. Mode 0600.
+      connect_timeout:
+        type: integer
+        minimum: 1
+        maximum: 60
+        default: 5
+      command_timeout:
+        type: integer
+        minimum: 5
+        maximum: 3600
+        default: 60
+      strict_host_key_checking:
+        enum: [accept-new, "yes"]
+        default: accept-new
+      privilege:
+        enum: [auto, sudo, root]
+        default: auto
+        description: auto uses `sudo -n` when the login user is not root.
+
+  execution:
+    type: object
+    additionalProperties: false
+    required: [concurrency, canary_size, retry_rounds, upgrade_command]
+    properties:
+      concurrency:
+        type: integer
+        minimum: 1
+        maximum: 16
+        default: 4
+      canary_size:
+        const: 1
+        description: Fixed at one VM by the feature specification (FR-012).
+      retry_rounds:
+        type: integer
+        minimum: 0
+        maximum: 1
+        default: 1
+        description: Exactly one automatic retry round for failed VMs (FR-013).
+      upgrade_command:
+        type: string
+        minLength: 1
+        pattern: "\\{package\\}"
+        default: >-
+          DEBIAN_FRONTEND=noninteractive apt-get install --only-upgrade {package}
+          -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"
+        description: Must contain {package}; never dist-upgrade/remove/fix-broken.
+
+  tool:
+    type: object
+    additionalProperties: false
+    required:
+      [name, package, service, config_paths, version_query, precheck,
+       allowed_origin_patterns, hold_patterns, allowed_dynamic_module_dirs,
+       verify, drift_patterns]
+    properties:
+      name:
+        type: string
+        minLength: 1
+        default: nginx
+      package:
+        type: string
+        minLength: 1
+        default: nginx
+      service:
+        type: string
+        minLength: 1
+        default: nginx
+      config_paths:
+        type: array
+        minItems: 1
+        items: {type: string, minLength: 1}
+        default: [/etc/nginx]
+      version_query:
+        type: string
+        minLength: 1
+        default: "dpkg-query -W -f='${Version}' nginx"
+      precheck:
+        type: string
+        minLength: 1
+        default: nginx -t
+      allowed_origin_patterns:
+        type: array
+        items: {type: string, minLength: 1}
+        default:
+          - archive.ubuntu.com
+          - security.ubuntu.com
+          - ports.ubuntu.com
+          - deb.debian.org
+          - security.debian.org
+        description: Substring match against sources reported by apt-cache policy.
+      hold_patterns:
+        type: array
+        items: {type: string, minLength: 1}
+        default: [nginx, "nginx-*"]
+      allowed_dynamic_module_dirs:
+        type: array
+        items: {type: string, minLength: 1}
+        default: [/usr/lib/nginx/modules]
+      verify:
+        type: object
+        additionalProperties: false
+        required: [http, https, require_status]
+        properties:
+          http:
+            type: object
+            additionalProperties: false
+            required: [enabled, url, timeout]
+            properties:
+              enabled: {type: boolean, default: true}
+              url: {type: string, minLength: 1, default: "http://127.0.0.1/"}
+              timeout: {type: integer, minimum: 1, maximum: 60, default: 10}
+          https:
+            type: object
+            additionalProperties: false
+            required: [enabled, url, timeout]
+            properties:
+              enabled:
+                enum: [auto, true, false]
+                default: auto
+                description: auto probes HTTPS only when ssl_certificate is present.
+              url: {type: string, minLength: 1, default: "https://127.0.0.1/"}
+              timeout: {type: integer, minimum: 1, maximum: 60, default: 10}
+          require_status:
+            type: array
+            items: {type: integer, minimum: 100, maximum: 599}
+            default: []
+            description: Empty means any HTTP response counts as responding.
+      drift_patterns:
+        type: array
+        items: {type: string, minLength: 1}
+        default: ["*.dpkg-dist", "*.dpkg-new", "*.ucf-dist"]
+
+  logging:
+    type: object
+    additionalProperties: false
+    properties:
+      redact:
+        type: array
+        items: {type: string}
+        default: []
+        description: Literal substrings masked in logged command output.
