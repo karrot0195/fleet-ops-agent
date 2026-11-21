@@ -5,3 +5,4 @@
 - Process each item sequentially and stop for explicit e2e verification before proceeding to the next. Confidence: 0.9
 - Report outputs should be a single consolidated markdown table with one row per item (e.g., one row per VM), rather than grouped sections. Confidence: 0.8
 - Defaults report and fleet summary files to the `./wiki/report/` directory. Confidence: 0.8
+- Prefers closing each ops incident loop via skill improvement after a verified fix ("fix → verify → improve the skill"). Confidence: 0.6

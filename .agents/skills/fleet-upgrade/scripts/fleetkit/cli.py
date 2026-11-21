@@ -57,6 +57,8 @@ def main() -> int:
     exec_cmd.add_argument("--approve", help="Comma-separated IPs approved for upgrade.")
     exec_cmd.add_argument("--yes", action="store_true", dest="auto_approve", help="Skip confirmation prompts.")
     exec_cmd.add_argument("--dry-run", action="store_true", help="Plan only — do not execute.")
+    exec_cmd.add_argument("--mode", choices=["none", "migrate"], default="none",
+                         help="Migration mode: 'migrate' bootstraps the upstream repo before upgrading.")
 
     # -- gate --
     gate = subparsers.add_parser("gate", help="Record canary gate decision.")
@@ -138,23 +140,44 @@ def _get_config(root: Path) -> tuple[Any, dict[str, Any]]:
 # ---- Command implementations -------------------------------------------
 
 def _load_tool_data(root: Path, tool_name: str) -> dict[str, Any]:
-    """Load tool data from .specific/{tool_name}.yaml."""
-    path = root / ".specific" / f"{tool_name}.yaml"
-    if not path.is_file():
-        raise SystemExit(f"config not found: {path} (run 'fleet.py config --init --type tool --name {tool_name}')")
-    raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    """Load tool data from .specific/{tool_name}.yaml, falling back to a config whose tool.name matches."""
+    specific_dir = root / ".specific"
+    path = specific_dir / f"{tool_name}.yaml"
+    raw: Any = None
+    source: Path = path
+    if path.is_file():
+        raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        source = path
+        if not (isinstance(raw, dict) and (raw.get("tool") or {}).get("name") == tool_name):
+            raw = None
     if not isinstance(raw, dict):
-        raise SystemExit(f"{path} must contain a YAML mapping")
+        if specific_dir.is_dir():
+            for yaml_path in sorted(specific_dir.iterdir()):
+                if yaml_path.suffix not in (".yaml", ".yml") or yaml_path == source:
+                    continue
+                try:
+                    candidate = yaml.safe_load(yaml_path.read_text(encoding="utf-8")) or {}
+                except Exception:
+                    continue
+                if isinstance(candidate, dict) and (candidate.get("tool") or {}).get("name") == tool_name:
+                    raw = candidate
+                    source = yaml_path
+                    break
+    if not isinstance(raw, dict):
+        raise SystemExit(f"config not found: {specific_dir / (tool_name + '.yaml')} (run 'fleet.py config --init --type tool --name {tool_name}')")
     return raw
 
 
 def _make_global_cfg(root: Path, tool_data: dict[str, Any]) -> Any:
     """Build a minimal Config-like object merging tool data with defaults."""
-    from fleetkit.config import _deep_merge, DEFAULTS
+    from fleetkit.config import _deep_merge, TOOL_DEFAULTS
 
-    merged = _deep_merge(DEFAULTS, tool_data)
+    merged = _deep_merge(TOOL_DEFAULTS, tool_data)
 
     class MiniConfig:
+        def __init__(self) -> None:
+            self.root = root
+
         def get(self, dotted: str, default: Any = None) -> Any:
             node: Any = merged
             for part in dotted.split("."):
@@ -162,6 +185,11 @@ def _make_global_cfg(root: Path, tool_data: dict[str, Any]) -> Any:
                     return default
                 node = node[part]
             return node
+
+        def resolve(self, dotted: str, default: Any = None) -> Path:
+            value = self.get(dotted, default)
+            p = Path(str(value)).expanduser()
+            return p if p.is_absolute() else (self.root / p)
 
     return MiniConfig()
 
@@ -205,7 +233,8 @@ def _cmd_doctor(root: Path, args: Any) -> int:
     from fleetkit.providers.doctl import DoctlProvider
     from fleetkit.providers.vultr import VultrProvider
     from fleetkit.providers.manual import ManualProvider
-    from fleetkit.config import load_provider_config, ProviderBase
+    from fleetkit.providers.base import ProviderBase
+    from fleetkit.config import load_provider_config
 
     provider_map = {"doctl": DoctlProvider, "vultr-cli": VultrProvider, "manual": ManualProvider}
 
@@ -314,6 +343,7 @@ def _cmd_survey(root: Path, args: Any) -> int:
     ssh = SSHClient(mini_cfg, ssh_env)
 
     # Get inventory
+    from fleetkit.state import StateStore
     state_store = StateStore(root)
     try:
         state_store.load()
@@ -384,21 +414,34 @@ def _cmd_execute(root: Path, args: Any) -> int:
     mini_cfg = _make_global_cfg(root, tool_data)
 
     from fleetkit.state import StateStore
-    state_store = StateStore(root)
-    try:
-        state_store.load()
-    except Exception:
-        print("No state found — run discover and survey first.")
-        return 2
+    from fleetkit.ssh import SSHClient
+    from fleetkit.config import load_ssh_env
+    from fleetkit.execute import execute_canary, execute_fleet, validate_approvals
 
-    if args.phase == "canary":
-        print("Canary execution requires approval gates. Use 'fleet.py survey' first.")
-        return 0
+    state_store = StateStore(root)
+    state_store.load()
 
     if args.dry_run:
         print("[dry-run] Execute plan would proceed after canary gate.")
         return 0
 
+    approved_ips = [i.strip() for i in (args.approve or "").split(",") if i.strip()]
+    if not approved_ips:
+        print("No approved IPs provided.")
+        return 2
+
+    validate_approvals(state_store.records, approved_ips, tool_data)
+
+    ssh_env = load_ssh_env(mini_cfg.resolve("ssh.env_file"))
+    ssh = SSHClient(mini_cfg, ssh_env)
+
+    if args.phase == "canary":
+        results = execute_canary(state_store, ssh, mini_cfg, tool_data, approved_ips, mode=args.mode)
+    else:
+        results = execute_fleet(state_store, ssh, mini_cfg, tool_data, approved_ips, mode=args.mode)
+
+    for ip in sorted(results):
+        print(f"{ip}: {results[ip].get('state', 'FAILED')}")
     return 0
 
 

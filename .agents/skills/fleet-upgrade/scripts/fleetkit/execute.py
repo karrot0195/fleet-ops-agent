@@ -40,11 +40,15 @@ def _do_upgrade(ssh: SSHClient, ip: str, config: Any, tool_config: dict[str, Any
     precheck_cmd = tool.get("precheck", "")
     service = tool.get("service", "")
     upgrade_cmd = tool.get("upgrade_command")
+    migration = tool_config.get("migration") or {}
+
+    if not upgrade_cmd and migration.get("enabled"):
+        upgrade_cmd = migration.get("upgrade_command")
 
     if not upgrade_cmd:
         upgrade_cmd = (
             'DEBIAN_FRONTEND=noninteractive apt-get install --only-upgrade {package} '
-            '-o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"'
+            '-o Dpkg::Options::="--force_confdef" -o Dpkg::Options::="--force_confold"'
         ).format(package=package)
 
     old_version_result = ssh.run(ip, version_query, check=False)
@@ -69,12 +73,69 @@ def _do_upgrade(ssh: SSHClient, ip: str, config: Any, tool_config: dict[str, Any
     }
 
 
+def _run_pipeline(
+    ssh: SSHClient,
+    ip: str,
+    config: Any,
+    tool_config: dict[str, Any],
+    mode: str,
+    phase: str,
+) -> dict[str, Any]:
+    """Backup -> optional upstream migration -> upgrade -> verify for one VM."""
+    from .backup import BackupError, create_backup, verify_backup
+    from .migration import migrate_vm
+
+    tool = tool_config.get("tool", {})
+    steps: list[dict[str, Any]] = []
+
+    backup: dict[str, Any] | None = None
+    try:
+        b = create_backup(
+            ssh,
+            list(tool.get("config_paths") or []),
+            str(tool.get("name") or tool.get("package") or "nginx"),
+            ip,
+            str(config.resolve("paths.backups_dir")),
+        )
+        if not verify_backup(b["path"], b["checksum"]):
+            raise BackupError(f"backup verification failed for {ip}")
+        backup = {"path": b["path"], "checksum": b["checksum"], "size_bytes": int(b.get("remote_size") or 0)}
+        steps.append({"name": "backup", "ok": True, "detail": str(b["path"])})
+    except Exception as exc:
+        return {"phase": phase, "ip": ip, "state": "FAILED", "error": f"backup failed: {exc}", "steps": steps}
+
+    migration: dict[str, Any] | None = None
+    if mode == "migrate" and tool_config.get("migration", {}).get("enabled"):
+        migration = migrate_vm(ssh, ip, tool_config)
+        if migration.get("state") != "SUCCEEDED":
+            return {
+                "phase": phase, "ip": ip, "state": "FAILED",
+                "error": f"migration failed: {migration.get('error')}",
+                "steps": steps, "backup": backup,
+            }
+
+    up = _do_upgrade(ssh, ip, config, tool_config)
+    result: dict[str, Any] = {
+        "phase": phase,
+        "ip": ip,
+        "state": up.get("state", "FAILED"),
+        "old_version": up.get("old_version"),
+        "new_version": up.get("new_version"),
+        "postcheck_ok": up.get("postcheck_ok"),
+        "backup": backup,
+        "migration": migration,
+        "steps": steps + [{"name": "upgrade", "ok": up.get("state") == "SUCCEEDED", "detail": f"{up.get('old_version')} -> {up.get('new_version')}"}],
+    }
+    return result
+
+
 def execute_canary(
     store: Any,
     client: SSHClient,
     config: Any,
     tool_config: dict[str, Any],
     approved_ips: list[str],
+    mode: str = "none",
 ) -> dict[str, Any]:
     """Execute canary rollout on a single VM.
 
@@ -86,7 +147,7 @@ def execute_canary(
     results: dict[str, Any] = {}
     for ip in approved_ips:
         try:
-            res = _do_upgrade(client, ip, config, tool_config)
+            res = _run_pipeline(client, ip, config, tool_config, mode=mode, phase="canary")
             res["phase"] = "canary"
             results[ip] = res
 
@@ -109,6 +170,7 @@ def execute_fleet(
     config: Any,
     tool_config: dict[str, Any],
     approved_ips: list[str],
+    mode: str = "none",
 ) -> dict[str, Any]:
     """Execute serial fleet rollout — one VM at a time with one retry round.
 
@@ -123,8 +185,8 @@ def execute_fleet(
 
         while attempts < max_attempts:
             try:
-                res = _do_upgrade(client, ip, config, tool_config)
-                final_state = res["state"]
+                res = _run_pipeline(client, ip, config, tool_config, mode=mode, phase="fleet")
+                final_state = res.get("state", "FAILED")
                 break
             except SSHError:
                 pass

@@ -72,7 +72,7 @@ def migrate_vm(
         # Step 2 & 3: Download and place signing key
         dl_key = f"curl -fsSL {key_url} -o /tmp/key.asc"
         hash_check = f"sha256sum /tmp/key.asc"
-        place_key = f"gpg --dearmor -o {shlex.quote(keyring_path)} /tmp/key.asc"
+        place_key = f"gpg --batch --yes --dearmor -o {shlex.quote(keyring_path)} /tmp/key.asc"
 
         r = ssh.run(ip, f"{dl_key} && {hash_check} && {place_key}", need_privilege=True)
         if not r.ok:
@@ -82,7 +82,7 @@ def migrate_vm(
 
         # Step 4: Create sources entry
         dist_entry = " ".join(f'"{d}"' for d in apply_dists) if apply_dists else f'"{repo_dist}"'
-        source_line = f"deb [signed-by={shlex.quote(keyring_path)}] {repo_url} {repo_dist} main"
+        source_line = f"deb [signed-by={shlex.quote(keyring_path)}] {repo_url} {repo_dist} nginx"
         sources_cmd = f"echo '{source_line}' > {shlex.quote(sources_path)}"
         r = ssh.run(ip, sources_cmd, need_privilege=True)
         if not r.ok:

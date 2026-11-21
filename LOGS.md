@@ -52,3 +52,8 @@ Tool registration, config validation, verdict computation, survey flow, and CLI 
 
 ---
 
+
+## Fleet Report: nginx
+
+Run completed with 1 records.
+

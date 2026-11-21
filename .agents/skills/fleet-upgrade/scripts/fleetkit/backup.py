@@ -53,9 +53,7 @@ def create_backup(
     local_path = local_dir / archive_name
 
     # Build remote tar command
-    escape_cmd = " && ".join(
-        shlex.quote(f"touch '{p}' || true") for p in config_paths
-    )
+    escape_cmd = " && ".join(f"touch {shlex.quote(p)} || true" for p in config_paths)
     tar_cmd = f"( {escape_cmd} ) && tar -czf {remote_tmp} {' '.join(shlex.quote(p) for p in config_paths)}"
 
     result = ssh.run(ip, tar_cmd, check=False)
