@@ -1,8 +1,8 @@
-# nginx-fleet-upgrade
+# fleet-ops-agent
 
 Automated, safety-gated upgrades for **nginx** across a fleet of DigitalOcean VMs.
 
-The `nginx-fleet-upgrade` Agent Skill audits every VM in the fleet, writes a per-VM
+The `fleet-upgrade` Agent Skill audits every VM in the fleet, writes a per-VM
 plan, and — once you approve — upgrades nginx with verified backups and full rollback
 capability. Rollouts run canary-first, then across the fleet.
 
@@ -12,15 +12,18 @@ capability. Rollouts run canary-first, then across the fleet.
   today; Vultr and manual inventories supported).
 - **Audit** — read-only survey of each VM: nginx presence, installed vs. candidate
   version, config drift, held packages, origin checks, health.
-- **Planning** — renders a per-VM record to `plan/{ip}.md`.
-- **Gated execution** — summary GATE → canary → recorded `proceed` → fleet rollout
-  (bounded concurrency, retry-once).
+- **Planning** — writes the per-VM audit/execution record to `plan/{ip}.md`.
+- **Gated execution** — summary identifies eligible (`UPGRADE`) VMs; canary executes the
+  approved VM; a recorded `gate --decision proceed` unlocks the fleet phase; fleet rolls out
+  the approved set (bounded concurrency, retry-once).
 - **Rollback** — configuration + package restore from verified local backups.
 - **Reporting** — per-VM before/after report, optional append-only `LOGS.md` entry.
 
 ## Safety model
 
-- **Safety First** — every change is preceded by a local backup and a working rollback path.
+- **Safety First** — every change is preceded by a local backup and a working rollback path;
+  backups are checksum-verified before use, and a missing/empty backup aborts the VM before
+  any mutation.
 - **Explicit Confirmation Gates** — execution never begins before the user confirms the
   summarized per-VM plan.
 - **Per-VM Traceability** — every audited or modified VM has a plan under `plan/{ip}.md`.
@@ -47,6 +50,8 @@ If `.personal/ssh.env` is missing, create it with `SSH_USER`, `SSH_KEY`, and `SS
 ## Usage
 
 The workflow is a fixed command sequence; run each command from the repository root.
+Typical run: discover → audit (`survey` + `summary`) → approve → canary → gate → fleet →
+rollback/report as needed.
 
 ### 1. Discover
 
@@ -72,7 +77,7 @@ python3 .agents/skills/fleet-upgrade/scripts/fleet.py execute --phase canary --t
 
 # after a healthy canary, record the gate decision and (if proceeding) run the fleet
 python3 .agents/skills/fleet-upgrade/scripts/fleet.py gate --decision proceed --note "canary healthy"
-python3 .agents/skills/fleet-upgrade/scripts/fleet.py execute --phase fleet --tool nginx --approve <ip,ip,...> --yes
+python3 .agents/skills/fleet-upgrade/scripts/fleet.py execute --phase fleet --tool nginx --approve 203.0.113.10,203.0.113.11 --yes
 ```
 
 `--dry-run` prints the exact per-VM steps — backup, precheck, upgrade, verify, drift — and
@@ -90,6 +95,10 @@ repo, e.g. nginx's own package repository).
 ### 4. Rollback
 
 ```bash
+# preview (no mutation)
+python3 .agents/skills/fleet-upgrade/scripts/fleet.py rollback --tool nginx --ip <ip> --dry-run
+
+# execute
 python3 .agents/skills/fleet-upgrade/scripts/fleet.py rollback --tool nginx --ip <ip> --yes
 ```
 

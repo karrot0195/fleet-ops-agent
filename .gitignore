@@ -3,6 +3,7 @@ backups/
 ip.txt
 plan/
 .fleet/
+.commandcode/
 __pycache__/
 *.pyc
 .DS_Store
