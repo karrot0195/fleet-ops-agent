@@ -1,0 +1,97 @@
+apiVersion: fleet-upgrade-tool/v1
+tool:
+  # Unique identifier for this tool (e.g., nginx, docker, redis)
+  name: TOOL_NAME
+
+  # OS package name managed by your package manager
+  package: PACKAGE_NAME
+
+  # Systemd service name (used for precheck/post-check/restart)
+  service: SERVICE_NAME
+
+  # Remote paths to backup before any changes; each path must exist on the target VMs
+  config_paths:
+    - /etc/TOOL_NAME
+
+  # Shell command to query the currently installed version.
+  # Must print the version string on stdout.
+  version_query: 'dpkg-query -W -f="${Version}" PACKAGE_NAME'
+
+  # Health-check command that should pass when the tool is running correctly.
+  precheck: 'TOOL_NAME -t'
+
+  # (Optional) Patterns used to verify the package origin during survey.
+  # Packages from unexpected origins trigger a BLOCKED verdict.
+  allowed_origin_patterns: []
+
+  # (Optional) Patterns matching packages that may be manually held.
+  # Hold patterns produce a BLOCKED verdict when detected.
+  hold_patterns:
+    - TOOL_NAME
+    - TOOL_NAME-*
+
+  # (Optional) File patterns to detect configuration drift during survey.
+  drift_patterns:
+    - "*.dpkg-dist"
+    - "*.dpkg-new"
+    - "*.ucf-dist"
+
+  # (Optional) Post-upgrade verification via HTTP/HTTPS checks.
+  verify:
+    http:
+      enabled: false
+      url: "http://127.0.0.1/"
+      timeout: 10
+    https:
+      enabled: auto
+      url: "https://127.0.0.1/"
+      timeout: 10
+    # HTTP status codes considered successful
+    require_status: []
+
+  # (Optional) Override the default apt-get upgrade command.
+  # Must include {package} placeholder.
+  upgrade_command: ~
+
+---
+# (Optional) Migration mode: bootstrap an upstream repository before upgrading.
+# Only enable when migrating FROM a distro repo TO an upstream repo.
+migration:
+  enabled: false
+
+  # Upstream APT repository URL
+  repo_url: "https://example.com/packages/ubuntu"
+
+  # Ubuntu distribution codename (e.g., noble, jammy)
+  repo_dist: noble
+
+  # Which distributions to apply the repo entry to
+  apply_to_dists:
+    - noble
+
+  # Signing key URL
+  key_url: "https://example.com/keys/key.asc"
+
+  # Expected 40-char SHA-1 fingerprint of the signing key
+  key_fingerprint: "0000000000000000000000000000000000000000"
+
+  # Local GPG keyring path
+  keyring_path: "/usr/share/keyrings/example-archive-keyring.gpg"
+
+  # Sources list file to add
+  sources_path: "/etc/apt/sources.list.d/example.list"
+
+  # APT pin preferences file
+  pin_path: "/etc/apt/preferences.d/99example"
+
+  # Pin priority (1-1000); 900 is typical for stable upgrades
+  pin_priority: 900
+
+  # Additional packages needed before bootstrapping the repo
+  prereq_packages:
+    - curl
+    - gnupg
+    - ca-certificates
+
+  # Upgrade command template; must include {package} placeholder
+  upgrade_command: 'DEBIAN_FRONTEND=noninteractive apt-get install -y {package}'

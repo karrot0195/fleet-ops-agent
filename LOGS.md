@@ -13,6 +13,18 @@ YYYY-MM-DD HH:MM: <short title>
 
 ## Entries
 
+2026-11-21 12:00: User Story 4 — Organized Output: Reports and Logging
+Report rendering with per-VM before/after tables, wiki report output, LOGS.md append with dedup guard, and record template created; report unit tests pass.
+
+
+2026-11-21 12:00: User Story 3 — Gated Canary Rollout and Rollback
+Execute engine with canary/serial fleet rollout, retry-once, verify approvals guard, full rollback (config + package restore), migration mode, and gate decision recording; execute and rollback tests added.
+
+
+2026-11-21 12:00: User Story 2 — Choose a Provider
+Doctl, vultr-cli, and manual providers implemented with discovery, auth check, reconciliation, and inventory file I/O; provider config templates and unit tests added.
+
+
 2026-11-20 13:29: Refactor PLAN.md into fleet upgrade runbook
 Rewrote PLAN.md as an agent-executable runbook: phases discover/access/survey/review-GATE/execute/report/rollback, config-only rollback with backups under backups/{ip}/, SSH creds persisted once to .personal/ssh.env, canary-then-parallel execution with capped concurrency, and a per-tool playbook section for extending to other tools.
 
@@ -33,3 +45,10 @@ Per-future state/plan persistence for crash-safe resume, SSHError containment at
 
 2026-11-21 10:16: nginx fleet upgrade 20261120T090606Z-50dfb9
 Processed 5 VM(s): 4 succeeded, 1 failed, 0 rolled back; drift flags on 5 VM(s).
+
+## 2026-11-21 12:00 — User Story 1 — Register a New Tool (MVP)
+
+Tool registration, config validation, verdict computation, survey flow, and CLI commands implemented. 67 tests pass covering all verdict scenarios, tool registry, providers, execute/rollback, and report generation.
+
+---
+

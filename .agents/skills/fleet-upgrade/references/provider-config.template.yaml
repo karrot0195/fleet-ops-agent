@@ -1,0 +1,24 @@
+"""Provider configuration template for new providers."""
+
+apiVersion: fleet-upgrade-provider/v1
+provider:
+  # Unique identifier for this provider (e.g., doctl, vultr, manual)
+  name: PROVIDER_NAME
+
+  # CLI binary name used to discover VMs
+  cli_binary: cli_binary
+
+  # Command to verify authentication is configured
+  auth_check: 'cli_binary auth list'
+
+  # Command template that returns VM list as JSON or CSV
+  discover_command: 'cli_binary instances --json'
+
+  # Output format parser: json, csv, or text
+  output_format: json
+
+  # JSON field path to extract IP address (for json format)
+  ip_field: ~
+
+  # JSON field path to extract VM name/label (for json format)
+  name_field: label
