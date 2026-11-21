@@ -13,13 +13,18 @@ architecture:
   database: ''
   unit_test_framework: unittest
 skills:
-  - name: verify-audit
-    description: "python3 -m unittest discover -s .agents/skills/nginx-fleet-upgrade/scripts/tests -t .agents/skills/nginx-fleet-upgrade/scripts -k verdict -k survey -k inventory -k audit_flow"
-  - name: verify-rollout
-    description: "python3 -m unittest discover -s .agents/skills/nginx-fleet-upgrade/scripts/tests -t .agents/skills/nginx-fleet-upgrade/scripts -k execute -k rollout"
-  - name: verify-rollback
-    description: "python3 -m unittest discover -s .agents/skills/nginx-fleet-upgrade/scripts/tests -t .agents/skills/nginx-fleet-upgrade/scripts -k rollback"
-  - name: verify-report
-    description: "python3 -m unittest discover -s .agents/skills/nginx-fleet-upgrade/scripts/tests -t .agents/skills/nginx-fleet-upgrade/scripts -k report"
+- name: verify-audit
+  description: python3 -m unittest discover -s .agents/skills/nginx-fleet-upgrade/scripts/tests
+    -t .agents/skills/nginx-fleet-upgrade/scripts -k verdict -k survey -k inventory
+    -k audit_flow
+- name: verify-rollout
+  description: python3 -m unittest discover -s .agents/skills/nginx-fleet-upgrade/scripts/tests
+    -t .agents/skills/nginx-fleet-upgrade/scripts -k execute -k rollout
+- name: verify-rollback
+  description: python3 -m unittest discover -s .agents/skills/nginx-fleet-upgrade/scripts/tests
+    -t .agents/skills/nginx-fleet-upgrade/scripts -k rollback
+- name: verify-report
+  description: python3 -m unittest discover -s .agents/skills/nginx-fleet-upgrade/scripts/tests
+    -t .agents/skills/nginx-fleet-upgrade/scripts -k report
 rules: []
 features_file: .specific/project-features.yaml
